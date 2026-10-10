@@ -1,0 +1,73 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Almacén</title><link rel="stylesheet" href="app.css"></head><body>
+<header><h1>Almacén</h1><nav id="nav"></nav></header>
+<main>
+<div class="tabs" id="tabs">
+<button class="btn on" data-t="stock">Existencias</button><button class="btn" data-t="shortages">Faltantes</button>
+<button class="btn" data-t="reorder">Sugerencias de compra</button><button class="btn" data-t="unmatched">Sin relacionar</button></div>
+<div id="search"><input id="q" placeholder="Buscar pieza por nombre, SKU o ID"></div>
+<div id="view"></div>
+</main>
+<script src="app.js"></script>
+<script>
+nav('a');
+let tab = 'stock', busy = false;
+const views = {
+  stock: async () => {
+    const q = $('#q').value.trim();
+    const r = await api('/stock' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    return table([['Pieza', x => esc(x.name) + '<br><small>' + esc(x.sku || 'P-' + x.part_id) + '</small>'], ['Ubicación', x => esc(x.location_code || x.location_id)],
+      ['En mano', x => x.on_hand], ['Reservado', x => x.reserved], ['Disponible', x => `<span class="${x.available > 0 ? 'ok' : 'bad'}">${x.available}</span>`]], r.items);
+  },
+  shortages: async () => {
+    const r = await api('/shortages');
+    return table([['Orden', x => esc(x.work_order_code)], ['Pieza', x => esc(x.name) + (x.part_id ? '' : ' <small>(sin identificar)</small>')],
+      ['SKU para comprar', x => x.part_id ? '<b>' + esc(x.sku || 'P-' + x.part_id) + '</b>' : '—'],
+      ['Falta', x => x.missing_quantity ?? '¿?'], ['Desde', x => esc((x.opened_at || '').slice(0, 10))]], r.items);
+  },
+  reorder: async () => {
+    const r = await api('/reorder-suggestions');
+    return table([['Pieza', x => esc(x.name || x.part_id) + '<br><small>' + esc(x.sku || '') + '</small>'], ['Cantidad a comprar', x => `<b>${x.suggested_quantity}</b>`],
+      ['Órdenes que la piden', x => x.work_order_ids.length ? esc(x.work_order_ids.join(', ')) : '<small>bajo mínimo</small>']], r.items);
+  },
+  unmatched: async () => {
+    const r = await api('/unmatched-receipts');
+    if (!r.items.length) return '<p class="muted">No hay recepciones pendientes</p>';
+    return r.items.map(x => `<div class="row" style="flex-wrap:wrap;background:#fff;padding:10px;border-radius:8px" data-id="${x.id}">
+      <div style="flex:1 1 220px"><b>${esc(x.part_number)}</b> × ${x.quantity}<br><small>${esc(x.description)}${x.work_order_code ? ' · orden ' + esc(x.work_order_code) : ''}</small></div>
+      <input class="ps" placeholder="Buscar pieza…" style="flex:1 1 160px"><select class="sel" style="flex:1 1 160px"></select>
+      <button class="btn rs">Relacionar</button></div>`).join('');
+  }
+};
+async function load() {
+  if (busy) return; busy = true;
+  try { $('#view').innerHTML = await views[tab](); } catch (e) { $('#view').innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+  busy = false;
+}
+$('#tabs').onclick = e => {
+  const t = e.target.dataset.t; if (!t) return;
+  tab = t; document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
+  $('#search').style.display = t === 'stock' ? '' : 'none'; load();
+};
+$('#q').oninput = () => load();
+$('#view').oninput = async e => { // buscador de piezas para relacionar a mano
+  if (!e.target.classList.contains('ps')) return;
+  const sel = e.target.parentElement.querySelector('.sel');
+  const q = e.target.value.trim(); if (q.length < 2) return;
+  const r = await api('/parts?q=' + encodeURIComponent(q));
+  sel.innerHTML = r.items.map(p => `<option value="${p.part_id}">${esc(p.name)} (${esc(p.sku || 'P-' + p.part_id)})</option>`).join('');
+};
+$('#view').onclick = async e => {
+  if (!e.target.classList.contains('rs')) return;
+  const row = e.target.closest('[data-id]'), sel = row.querySelector('.sel');
+  if (!sel.value) { alert('Busca y elige una pieza'); return; }
+  try { await api('/unmatched-receipts/' + row.dataset.id + '/resolve', { part_id: Number(sel.value) }); load(); } catch (err) { alert(err.message); }
+};
+load();
+setInterval(() => { // no refrescar mientras se escribe, se elige en una lista o hay un buscador con texto
+  const a = document.activeElement;
+  const typing = a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName);
+  const editing = tab === 'unmatched' && [...document.querySelectorAll('.ps')].some(i => i.value);
+  if (!typing && !editing) load();
+}, 5000);
+</script></body></html>

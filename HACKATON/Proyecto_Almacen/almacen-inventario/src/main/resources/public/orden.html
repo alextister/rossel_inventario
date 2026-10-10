@@ -1,0 +1,27 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orden de trabajo</title><link rel="stylesheet" href="app.css"></head><body>
+<header><h1>Orden de trabajo</h1><nav id="nav"></nav></header>
+<main>
+<div class="row"><input id="code" placeholder="Código de la orden, ej. R061026012"><button class="btn" id="go">Buscar</button></div>
+<div id="view"></div>
+</main>
+<script src="app.js"></script>
+<script>
+nav('o');
+let code = new URLSearchParams(location.search).get('code') || '';
+$('#code').value = code;
+async function load() {
+  if (!code) return;
+  try {
+    const r = await api('/work-orders/' + encodeURIComponent(code) + '/materials');
+    const state = x => x.missing === null ? '<span class="warn">Falta cantidad</span>' : x.missing > 0 ? '<span class="bad">Faltante</span>'
+      : (x.required !== null && x.issued >= x.required) ? '<span class="ok">Entregado</span>' : x.reserved > 0 ? '<span class="warn">Reservado</span>' : '—';
+    $('#view').innerHTML = `<h3>${esc(r.code)}</h3>` + table([
+      ['Pieza', x => esc(x.name) + (x.part_id ? '' : ' <small>(sin identificar)</small>')], ['SKU', x => x.part_id ? esc(x.sku || 'P-' + x.part_id) : '—'], ['Requerido', x => x.required ?? '¿?'],
+      ['Reservado', x => x.reserved], ['Entregado', x => x.issued], ['Pendiente', x => x.missing ?? '¿?'], ['Estado', state]], r.lines);
+  } catch (e) { $('#view').innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+}
+$('#go').onclick = () => { code = $('#code').value.trim(); load(); };
+$('#code').onkeydown = e => { if (e.key === 'Enter') $('#go').click(); };
+load(); setInterval(load, 4000);
+</script></body></html>

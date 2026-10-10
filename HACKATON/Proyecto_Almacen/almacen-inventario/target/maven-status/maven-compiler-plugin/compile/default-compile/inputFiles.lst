@@ -1,0 +1,16 @@
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Api.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\ApiError.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Ctx.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Db.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\EventSource.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\FileEventSource.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\FilePublisher.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Floor.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Json.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\KafkaEventSource.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\KafkaPublisher.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Main.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Outbox.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Processor.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Publisher.java
+C:\Users\anyel\Downloads\almacen-inventario\src\main\java\taller\inventario\Stock.java

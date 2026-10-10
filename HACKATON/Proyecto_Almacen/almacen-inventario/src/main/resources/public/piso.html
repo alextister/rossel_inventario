@@ -1,0 +1,108 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Piso</title><link rel="stylesheet" href="app.css"></head><body>
+<header><h1>Piso</h1><nav id="nav"></nav></header>
+<main>
+<div class="seg" id="modes"><button class="btn on" data-m="issue">Retirar</button><button class="btn" data-m="transfer">Transferir</button><button class="btn" data-m="count">Contar</button></div>
+
+<label id="locLabel">Ubicación</label>
+<div class="row"><input id="loc" placeholder="Escanea o escribe U-101" autocomplete="off"><button class="btn" data-scan="loc">📷</button></div>
+<div id="locInfo" class="muted"></div>
+
+<label>Pieza</label>
+<div class="row"><input id="part" placeholder="SKU o P-24" autocomplete="off"><button class="btn" data-scan="part">📷</button></div>
+<div id="partInfo" class="muted"></div><div id="pick" class="pick"></div>
+
+<div id="f-transfer" hidden><label>Ubicación destino</label>
+<div class="row"><input id="dst" placeholder="Escanea o escribe U-102" autocomplete="off"><button class="btn" data-scan="dst">📷</button></div><div id="dstInfo" class="muted"></div></div>
+
+<div id="f-issue"><label>Orden de trabajo</label><input id="wo" placeholder="R061026012" autocapitalize="characters">
+<label>Técnico</label><input id="who" placeholder="Tu nombre o número"></div>
+
+<div id="f-count" hidden><label>Motivo del ajuste</label><input id="reason" value="conteo cíclico"></div>
+
+<label id="qtyLabel">Cantidad</label><input id="qty" type="number" inputmode="numeric" min="0">
+<button class="primary" id="go">Confirmar</button>
+<div id="msg"></div>
+</main>
+<script src="app.js"></script>
+<script>
+nav('p');
+let mode = 'issue', loc = null, part = null, dst = null;
+$('#who').value = localStorage.getItem('who') || '';
+
+async function lookup(path, code) { return api(path + '?code=' + encodeURIComponent(code.trim())); }
+async function setLoc(code) {
+  try { loc = await lookup('/scan/location', code); $('#locInfo').textContent = '✔ ' + loc.code + ' · ' + (loc.name || ''); }
+  catch (e) { loc = null; $('#locInfo').textContent = '❌ ' + e.message; }
+  showStock();
+}
+async function setDst(code) {
+  try { dst = await lookup('/scan/location', code); $('#dstInfo').textContent = '✔ ' + dst.code + ' · ' + (dst.name || ''); }
+  catch (e) { dst = null; $('#dstInfo').textContent = '❌ ' + e.message; }
+}
+async function setPart(code) {
+  $('#pick').innerHTML = ''; part = null;
+  try {
+    const r = await lookup('/scan/part', code);
+    if (r.items.length === 1) return choose(r.items[0]);
+    $('#partInfo').textContent = 'Ese SKU es de varias piezas, elige una:';
+    $('#pick').innerHTML = r.items.map(p => `<button class="btn" data-p='${JSON.stringify(p).replace(/'/g, '&#39;')}'>${esc(p.name)} (P-${p.part_id})</button>`).join('');
+  } catch (e) { $('#partInfo').textContent = '❌ ' + e.message; }
+}
+function choose(p) { part = p; $('#pick').innerHTML = ''; showStock(); }
+async function showStock() {
+  if (!part) return;
+  let t = '✔ ' + part.name + ' (' + (part.sku || 'P-' + part.part_id) + ')';
+  try {
+    const av = await api('/parts/' + part.part_id + '/availability');
+    if (loc) { const l = av.locations.find(x => x.location_id === loc.location_id); t += ' · aquí: ' + (l ? l.on_hand : 0) + ' (disp. ' + (l ? l.available : 0) + ')'; }
+  } catch (e) { /* sin saldo */ }
+  $('#partInfo').textContent = t;
+}
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  $('#f-issue').hidden = m !== 'issue'; $('#f-transfer').hidden = m !== 'transfer'; $('#f-count').hidden = m !== 'count';
+  $('#locLabel').textContent = m === 'transfer' ? 'Ubicación origen' : 'Ubicación';
+  $('#qtyLabel').textContent = m === 'count' ? 'Cantidad contada' : 'Cantidad';
+  $('#go').textContent = { issue: 'Retirar', transfer: 'Transferir', count: 'Registrar conteo' }[m];
+}
+$('#modes').onclick = e => { if (e.target.dataset.m) setMode(e.target.dataset.m); };
+const handlers = { loc: setLoc, part: setPart, dst: setDst };
+for (const id of ['loc', 'part', 'dst']) {
+  $('#' + id).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); handlers[id](e.target.value); } }; // el lector USB termina con Enter
+  $('#' + id).onchange = e => handlers[id](e.target.value);
+}
+document.querySelectorAll('[data-scan]').forEach(b => b.onclick = async () => {
+  const id = b.dataset.scan, code = await scanCode();
+  if (code) { $('#' + id).value = code; handlers[id](code); }
+});
+$('#pick').onclick = e => { if (e.target.dataset.p) choose(JSON.parse(e.target.dataset.p)); };
+
+function msg(ok, t) { const m = $('#msg'); m.className = ok ? 'ok' : 'bad'; m.textContent = t; }
+$('#go').onclick = async () => {
+  try {
+    if (!loc) throw new Error('Escanea la ubicación');
+    if (!part) throw new Error('Escanea la pieza');
+    const qty = Number($('#qty').value);
+    if (!Number.isInteger(qty) || qty < (mode === 'count' ? 0 : 1) || $('#qty').value === '') throw new Error('Escribe una cantidad válida');
+    if (mode === 'issue') {
+      const wo = $('#wo').value.trim(), who = $('#who').value.trim();
+      if (!wo) throw new Error('Escribe el código de la orden'); if (!who) throw new Error('Escribe quién retira');
+      localStorage.setItem('who', who);
+      await api('/issues', { work_order_code: wo, part_id: part.part_id, location_id: loc.location_id, quantity: qty, issued_by: who });
+      msg(true, `✔ Retiradas ${qty} de ${part.name} contra ${wo}`);
+    } else if (mode === 'transfer') {
+      if (!dst) throw new Error('Escanea la ubicación destino');
+      await api('/transfers', { part_id: part.part_id, from_location_id: loc.location_id, to_location_id: dst.location_id, quantity: qty });
+      msg(true, `✔ Movidas ${qty} de ${loc.code} a ${dst.code}`);
+    } else {
+      const r = await api('/counts', { location_id: loc.location_id, reason: $('#reason').value.trim(), lines: [{ part_id: part.part_id, counted_quantity: qty }] });
+      const d = r.adjustments.length ? r.adjustments[0].delta : 0;
+      msg(true, d === 0 ? '✔ El conteo coincide con el sistema' : `✔ Ajuste registrado: ${d > 0 ? '+' : ''}${d}`);
+    }
+    $('#qty').value = ''; $('#part').value = ''; part = null; $('#partInfo').textContent = '';
+  } catch (e) { msg(false, '❌ ' + e.message); }
+};
+setMode('issue');
+</script></body></html>

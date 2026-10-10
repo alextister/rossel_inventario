@@ -1,0 +1,24 @@
+CREATE TABLE IF NOT EXISTS processed_events(event_id TEXT PRIMARY KEY, event_type TEXT, processed_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS pending_events(event_id TEXT PRIMARY KEY, payload TEXT NOT NULL, reason TEXT);
+CREATE TABLE IF NOT EXISTS parts(part_id INTEGER PRIMARY KEY, sku TEXT, sku_norm TEXT, name TEXT, family TEXT, grp TEXT, subgroup TEXT, unit TEXT, active INTEGER DEFAULT 1);
+CREATE INDEX IF NOT EXISTS idx_parts_sku ON parts(sku_norm);
+CREATE TABLE IF NOT EXISTS locations(location_id INTEGER PRIMARY KEY, code TEXT, name TEXT, is_workbench INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
+CREATE INDEX IF NOT EXISTS idx_loc_code ON locations(code);
+CREATE TABLE IF NOT EXISTS bom_lines(bom_line_id INTEGER PRIMARY KEY, model_id INTEGER, part_id INTEGER, name TEXT, group_name TEXT, qty_per_unit INTEGER);
+CREATE TABLE IF NOT EXISTS work_orders(work_order_id INTEGER PRIMARY KEY, code TEXT, model_id INTEGER, department TEXT, stage TEXT, deleted INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_wo_code ON work_orders(code);
+CREATE TABLE IF NOT EXISTS inspections(inspection_id INTEGER PRIMARY KEY, work_order_id INTEGER, kind TEXT, status TEXT);
+CREATE TABLE IF NOT EXISTS needs(work_order_id INTEGER NOT NULL, bom_line_id INTEGER NOT NULL, inspection_id INTEGER, inspection_item_id INTEGER, part_id INTEGER, name TEXT, required INTEGER, PRIMARY KEY(work_order_id, bom_line_id));
+CREATE INDEX IF NOT EXISTS idx_needs_insp ON needs(inspection_id);
+CREATE TABLE IF NOT EXISTS movements(id INTEGER PRIMARY KEY AUTOINCREMENT, part_id INTEGER NOT NULL, location_id INTEGER NOT NULL, delta INTEGER NOT NULL, type TEXT NOT NULL, ref_type TEXT, ref TEXT, unit_cost TEXT, currency TEXT, reason TEXT, event_id TEXT, created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_mov_part ON movements(part_id);
+CREATE TABLE IF NOT EXISTS balances(part_id INTEGER NOT NULL, location_id INTEGER NOT NULL, on_hand INTEGER NOT NULL DEFAULT 0, reserved INTEGER NOT NULL DEFAULT 0 CHECK(reserved >= 0), PRIMARY KEY(part_id, location_id));
+CREATE TABLE IF NOT EXISTS reservations(id INTEGER PRIMARY KEY AUTOINCREMENT, work_order_id INTEGER NOT NULL, bom_line_id INTEGER, part_id INTEGER NOT NULL, location_id INTEGER NOT NULL, quantity INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active', inspection_id INTEGER, inspection_item_id INTEGER);
+CREATE INDEX IF NOT EXISTS idx_res_need ON reservations(work_order_id, bom_line_id);
+CREATE TABLE IF NOT EXISTS shortages(id INTEGER PRIMARY KEY AUTOINCREMENT, work_order_id INTEGER NOT NULL, bom_line_id INTEGER, part_id INTEGER, name TEXT, missing_quantity INTEGER, inspection_id INTEGER, inspection_item_id INTEGER, status TEXT NOT NULL DEFAULT 'open', created_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_short_part ON shortages(part_id, status);
+CREATE INDEX IF NOT EXISTS idx_short_need ON shortages(work_order_id, bom_line_id);
+CREATE TABLE IF NOT EXISTS unmatched_receipts(id INTEGER PRIMARY KEY AUTOINCREMENT, purchase_line_id INTEGER, part_number TEXT, description TEXT, quantity INTEGER, unit_price TEXT, currency TEXT, work_order_code TEXT, received_at TEXT, status TEXT NOT NULL DEFAULT 'pending', resolved_part_id INTEGER);
+CREATE TABLE IF NOT EXISTS reorder_policies(part_id INTEGER PRIMARY KEY, min_qty INTEGER, max_qty INTEGER, reorder_qty INTEGER, lead_time_days INTEGER);
+CREATE TABLE IF NOT EXISTS reorder_state(part_id INTEGER PRIMARY KEY, signature TEXT);
+CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT UNIQUE, event_type TEXT, key TEXT, payload TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0)
